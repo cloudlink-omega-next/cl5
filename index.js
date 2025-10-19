@@ -35,28 +35,28 @@
     // Require the extension to be unsandboxed
     if (!Scratch.extensions.unsandboxed) {
         return alert(
-            "The CL5 extension must be loaded in an unsandboxed environment. Make sure to enable the \"Run without Sandbox\" option when loading the extension. Refresh the page and try again."
+            "CL5 扩展必须在非沙盒环境中加载。请确保在加载扩展时启用了“无沙盒运行”选项。刷新页面后重试。"
         );
     }
 
     // Require access to the VM and/or runtime
     if (!Scratch.vm || !Scratch.vm.runtime) {
         return alert(
-            "The CL5 extension could not detect access to the Scratch VM and/or runtime. Please use a Turbowarp-based Scratch environment."
+            "CL5 扩展无法检测到对 Scratch VM 和/或运行时的访问。请使用基于 Turbowarp 的 Scratch 环境。"
         );
     }
 
     // Require browser to support Web Locks API (used for concurrency)
     if (!navigator.locks) {
         return alert(
-            "The CL5 extension could not detect Web Locks support; this extension won't work. Please update your browser or use a different one like Google Chrome, Mozilla Firefox, or Microsoft Edge."
+            "CL5 扩展无法检测到 Web Locks 支持；此扩展将无法工作。请更新您的浏览器或使用其他浏览器，例如 Google Chrome、Mozilla Firefox 或 Microsoft Edge。"
         );
     }
 
     // Check if the browser supports the WebCrypto API (used for E2EE)
     if (!window.crypto || !window.crypto.subtle) {
         alert(
-            "The CL5 extension could not detect Web Cryptography support; the extension will continue to work but you will not have end-to-end encryption."
+            "CL5 扩展无法检测到 Web Cryptography 支持；扩展将继续工作，但您将无法使用端到端加密。"
         );
     }
 
@@ -70,7 +70,7 @@
                 port: url.port ? parseInt(url.port) : (url.protocol === 'wss:' ? 443 : 80),
             };
         } catch (err) {
-            alert('Invalid URL:', err);
+            alert('无效的 URL：' + err);
             return null;
         }
     }
@@ -104,12 +104,12 @@
         unbind(name, id) {
             if (id == "*") {
                 this.calls.delete(name);
-                if (this.debug > 2) console.log(`Unbound all callbacks for "${name}"`);
+                if (this.debug > 2) console.log(`已解绑所有 "${name}" 的回调`);
                 return;
             }
             if (!this.calls.has(name) || !this.calls.get(name).has(id)) return;
             this.calls.get(name).delete(id);
-            if (this.debug > 2) console.log(`Unbound callback for "${name}" with ID "${id}"`);
+            if (this.debug > 2) console.log(`已解绑 "${name}" 的回调，ID 为 "${id}"`);
         }
 
         /**
@@ -125,11 +125,11 @@
                 this.calls.set(name, new Map());
             }
             if (typeof callback !== 'function') {
-                if (this.debug > 0) console.error('Callback must be a function');
+                if (this.debug > 0) console.error('回调必须是一个函数');
                 return;
             }
             this.calls.get(name).set(id, callback);
-            if (this.debug > 2) console.log(`Bound callback for "${name}" with ID "${id}"`);
+            if (this.debug > 2) console.log(`已绑定 "${name}" 的回调，ID 为 "${id}"`);
         }
 
         /**
@@ -145,7 +145,7 @@
          */
         call(name, ...args) {
             if (!this.calls.has(name)) {
-                if (this.debug > 1) console.warn(`No callbacks registered for "${name}"`);
+                if (this.debug > 1) console.warn(`未注册 "${name}" 的回调`);
                 return;
             };
             if (this.calls.get(name) === null) {
@@ -157,20 +157,20 @@
                 return;
             }
             if (!(this.calls.get(name) instanceof Map)) {
-                if (this.debug > 0) console.error("Callback was not a map! Got ", typeof this.calls.get(name), "instead.");
+                if (this.debug > 0) console.error("回调不是一个 Map！实际类型为", typeof this.calls.get(name), "。");
                 return;
             }
-            if (this.debug > 2) console.log(`Executing callbacks for "${name}"`);
+            if (this.debug > 2) console.log(`正在执行 "${name}" 的所有回调`);
             for (const callback of this.calls.get(name).values()) {
                 if (callback === null || typeof callback !== 'function') {
-                    if (this.debug > 1) console.warn(`Callback registered for "${name}" is null or not a function`);
+                    if (this.debug > 1) console.warn(`为 "${name}" 注册的回调为 null 或不是函数`);
                     continue;
                 }
                 try {
-                    if (this.debug > 2) console.log(`Executing callback ${callback}"`);
+                    if (this.debug > 2) console.log(`正在执行回调 ${callback}"`);
                     callback(...args);
                 } catch (error) {
-                    if (this.debug > 0) console.error(`Error executing callback for "${name}"`, error);
+                    if (this.debug > 0) console.error(`执行 "${name}" 的回调时出错`, error);
                 }
             }
         }
@@ -446,7 +446,7 @@
 
                             // Global variable was deleted
                             if (!vm.runtime.targets[0].variables[id]) {
-                                console.log("Global variable", id, "was deleted");
+                                console.log("全局变量", id, "已被删除");
                                 callbacks.call(this.varEvents[element.classtype].get(id).off);
                                 this.varEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -458,7 +458,7 @@
 
                             // Clone holdin the variable was deleted
                             if (!vm.runtime.getTargetById(element.clone_id)) {
-                                console.log("Clone that was holding clone variable", id, "was deleted");
+                                console.log("持有克隆变量的克隆", id, "已被删除");
                                 callbacks.call(this.varEvents[element.classtype].get(id).off);
                                 this.varEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -466,7 +466,7 @@
 
                                 // Variable was deleted
                             } else if (!vm.runtime.getTargetById(element.clone_id).variables[id]) {
-                                console.log("Clone variable", id, "was deleted");
+                                console.log("克隆变量", id, "已被删除");
                                 callbacks.call(this.varEvents[element.classtype].get(id).off);
                                 this.varEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -478,7 +478,7 @@
 
                             // Variable was deleted
                             if (!vm.runtime.getTargetById(element.target_id).variables[id]) {
-                                console.log("Local variable", id, "was deleted");
+                                console.log("本地变量", id, "已被删除");
                                 callbacks.call(this.varEvents[element.classtype].get(id).off);
                                 this.varEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -494,7 +494,7 @@
 
                             // Global list was deleted
                             if (!vm.runtime.targets[0].variables[id]) {
-                                console.log("Global list", id, "was deleted");
+                                console.log("全局列表", id, "已被删除");
                                 callbacks.call(this.listEvents[element.classtype].get(id).off);
                                 this.listEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -514,7 +514,7 @@
 
                             // If the sprite that was managing the list was deleted, destroy bindings
                             if (!vm.runtime.getTargetById(element.clone_id)) {
-                                console.log("Clone that was holding list", id, "was deleted");
+                                console.log("持有列表的克隆", id, "已被删除");
                                 callbacks.call(this.listEvents[element.classtype].get(id).off);
                                 this.listEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -522,7 +522,7 @@
 
                                 // If the list was deleted in the clone, destroy bindings
                             } else if (!vm.runtime.getTargetById(element.clone_id).variables[id]) {
-                                console.log("Clone list", id, "was deleted");
+                                console.log("克隆列表", id, "已被删除");
                                 callbacks.call(this.listEvents[element.classtype].get(id).off);
                                 this.listEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -541,7 +541,7 @@
 
                             // The list was deleted, so destroy it
                             if (!vm.runtime.getTargetById(element.target_id).variables[id]) {
-                                console.log("Local list", id, "was deleted");
+                                console.log("本地列表", id, "已被删除");
                                 callbacks.call(this.listEvents[element.classtype].get(id).off);
                                 this.listEvents[element.classtype].delete(id);
                                 this.networkUpdateTracker[element.classtype].delete(id);
@@ -847,7 +847,7 @@
             );
             this.publicKey = await this.exportPublicKey(keyPair.publicKey);
             this.privateKey = await this.exportPrivateKey(keyPair.privateKey);
-            console.log("Key pair generated");
+            console.log("密钥对已生成");
         }
 
         /**
@@ -1402,7 +1402,7 @@
                 callbacks.call("ondisconnect");
             });
             this.peer.on("error", (err) => {
-                console.log("Peer error: " + err);
+                console.log("对等方错误：" + err);
                 callbacks.call("onerror", {peer: this.peer, err});
             });
         }
@@ -1782,8 +1782,8 @@
                     .getUserMedia({ audio: true })
                     .then(async(localStream) => {
                         if (!this.localStreams.has(ID)) this.localStreams.set(ID, localStream);
-                        if (this.verbose_logs) console.log("Obtained local stream: ", localStream);
-                        if (this.verbose_logs) console.log("Calling peer", ID);
+                        if (this.verbose_logs) console.log("获取到本地媒体流：", localStream);
+                        if (this.verbose_logs) console.log("正在呼叫对等方", ID);
                         const call = await this.peer.call(ID, localStream);
                         this.handle_call(ID, call);
                     })
@@ -1845,8 +1845,8 @@
                     .getUserMedia({ audio: true })
                     .then(async(localStream) => {
                         if (!this.localStreams.has(ID)) this.localStreams.set(ID, localStream);
-                        if (this.verbose_logs) console.log("Obtained local stream: ", localStream);
-                        if (this.verbose_logs) console.log("Answering call from peer", ID);
+                        if (this.verbose_logs) console.log("获取到本地媒体流：", localStream);
+                        if (this.verbose_logs) console.log("正在接听来自对等方的呼叫", ID);
                         call.answer(localStream);
                     })
                     .catch((e) => {
@@ -1861,7 +1861,7 @@
             if (!this.is_other_peer_connected(ID)) return;
             if (!this.ringing_peers.has(ID)) return;
             
-            if (this.verbose_logs) console.log("Declining call from peer", ID);
+            if (this.verbose_logs) console.log("拒绝来自对等方的呼叫", ID);
             this.send_message_to_peer({opcode: "DECLINE"}, ID, "default");
         }
 
@@ -1887,10 +1887,10 @@
                     this.localStreams.delete(id);
                 }
                 if (this.ringing_peers.has(id)) {
-                    if (this.verbose_logs) console.log("Peer", id, "hung up while ringing");
+                    if (this.verbose_logs) console.log("对等方", id, "在响铃时挂断");
                     this.ringing_peers.delete(id);
                 } else {
-                    if (this.verbose_logs) console.log("Peer", id, "hung up the call");
+                    if (this.verbose_logs) console.log("对等方", id, "挂断了通话");
                     this.voice_connections.delete(id);
                 }
             });
@@ -1910,7 +1910,7 @@
 
             // Initialize source
             const source = this.audioContext.createMediaStreamSource(stream);
-            if (this.verbose_logs) console.log("Initialized Media Stream Source", source);
+            if (this.verbose_logs) console.log("初始化媒体流来源", source);
             
             // Initialize panner
             const panner = this.audioContext.createPanner();
@@ -1925,12 +1925,12 @@
             panner.positionX.value = 0;
             panner.positionY.value = 0;
             panner.positionZ.value = 0;
-            if (this.verbose_logs) console.log("Initialized Panner", panner);
+            if (this.verbose_logs) console.log("初始化声像器", panner);
 
             // Initialize gain
             const gain = this.audioContext.createGain();
             gain.gain.value = 1; 
-            if (this.verbose_logs) console.log("Initialized Gain", gain);
+            if (this.verbose_logs) console.log("初始化增益", gain);
 
             // Connect elements
             source.connect(panner);
@@ -1944,13 +1944,13 @@
                 gain,
                 panner
             });
-            if (this.verbose_logs) console.log("Stored elements for call with peer", id, " - ", this.voice_connections.get(id));
+            if (this.verbose_logs) console.log("为与对等方", id, "的通话存储了元素 - ", this.voice_connections.get(id));
 
             // Log to console
-            if (this.verbose_logs) console.log("Opening audio stream for call with peer", id);
+            if (this.verbose_logs) console.log("为与对等方", id, "的通话打开音频流");
 
             if (this.audioContext.state === "suspended") {
-                if (this.verbose_logs) console.log("Resuming audio context");
+                if (this.verbose_logs) console.log("恢复音频上下文");
                 this.audioContext.resume();
             }
         }
@@ -2115,137 +2115,137 @@
                 blocks: [
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate(`ℹ️ Version ${version}`),
+                        text: Scratch.translate(`ℹ️ 版本 ${version}`),
                     },
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("👤 Session"),
+                        text: Scratch.translate("👤 会话"),
                     },
                     {
                         opcode: "on_player_session_spawned",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when my player session is created"),
+                        text: Scratch.translate("当我的玩家会话被创建时"),
                         isEdgeActivated: false,
                     },
                     {
                         opcode: "on_player_session_destroyed",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when my player session is destroyed"),
+                        text: Scratch.translate("当我的玩家会话被销毁时"),
                         isEdgeActivated: false,
                     },
                     {
                         opcode: "on_player_session_disconnected",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when my player session is disconnected"),
+                        text: Scratch.translate("当我的玩家会话断开连接时"),
                         isEdgeActivated: false,
                     },
                     {
                         opcode: "on_player_session_reconnected",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when my player session gets reconnected"),
+                        text: Scratch.translate("当我的玩家会话重新连接时"),
                         isEdgeActivated: false,
                     },
                     {
                         opcode: "on_player_mode_changed",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when my player mode changes"),
+                        text: Scratch.translate("当我的玩家模式改变时"),
                         isEdgeActivated: false,
                     },
                     "---",
                     {
                         opcode: "is_session_connected",
                         blockType: Scratch.BlockType.BOOLEAN,
-                        text: Scratch.translate("connected to session server?"),
+                        text: Scratch.translate("已连接到会话服务器？"),
                     },
                     {
                         opcode: "my_ID",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("my instance id"),
+                        text: Scratch.translate("我的实例 ID"),
                     },
                     {
                         opcode: "my_ID_account",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("my account id"),
+                        text: Scratch.translate("我的账号 ID"),
                     },
                     {
                         opcode: "my_Username",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("my username"),
+                        text: Scratch.translate("我的用户名"),
                     },
                     {
                         opcode: "get_client_mode",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("my current player mode"),
+                        text: Scratch.translate("我当前的玩家模式"),
                     },
                     "---",
                     {
                         opcode: "disconnect",
-                        text: Scratch.translate('disconnect from session server'),
+                        text: Scratch.translate('从会话服务器断开连接'),
                         blockType: Scratch.BlockType.COMMAND,
                     },
                     {
                         opcode: "reconnect",
-                        text: Scratch.translate('reconnect to session server'),
+                        text: Scratch.translate('重新连接到会话服务器'),
                         blockType: Scratch.BlockType.COMMAND,
                     },
                     "---",
                     {
                         opcode: "on_player_session_error",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when my player session gets an error"),
+                        text: Scratch.translate("当我的玩家会话发生错误时"),
                         isEdgeActivated: false,
                     },
                     {
                         opcode: "get_client_error",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("last error message"),
+                        text: Scratch.translate("最后的错误消息"),
                     },
                     {
                         opcode: "get_client_error_peer",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("last error peer"),
+                        text: Scratch.translate("最后出错的对等方"),
                     },
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🔌 Connectivity"),
+                        text: Scratch.translate("🔌 连接性"),
                     },
                     {
                         opcode: "on_connect",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when connected to game server"),
+                        text: Scratch.translate("当连接到游戏服务器时"),
                         isEdgeActivated: false,
                     },
                     {
                         opcode: "on_disconnect",
                         blockType: Scratch.BlockType.EVENT,
-                        text: Scratch.translate("when disconnected from game server"),
+                        text: Scratch.translate("当从游戏服务器断开时"),
                         isEdgeActivated: false,
                     },
                     {
                         opcode: "is_signalling_connected",
                         blockType: Scratch.BlockType.BOOLEAN,
-                        text: Scratch.translate("connected to game server?"),
+                        text: Scratch.translate("已连接到游戏服务器？"),
                     },
                     {
                         opcode: "destroy",
-                        text: Scratch.translate('destroy connections and disconnect'),
+                        text: Scratch.translate('销毁连接并断开'),
                         blockType: Scratch.BlockType.COMMAND,
                     },
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🛠️ Connection Builder"),
+                        text: Scratch.translate("🛠️ 连接构建器"),
                     },
                     {
                         opcode: "connection_builder",
-                        text: [Scratch.translate("create connection"), Scratch.translate("then connect")],
+                        text: [Scratch.translate("创建连接"), Scratch.translate("然后连接")],
                         blockType: Scratch.BlockType.CONDITIONAL,
                         branchCount: 1,
                     },
                     {
                         opcode: "set_game_server",
-                        text: Scratch.translate('using game server [SERVER]'),
+                        text: Scratch.translate('使用游戏服务器 [SERVER]'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             SERVER: {
@@ -2256,7 +2256,7 @@
                     },
                     {
                         opcode: "set_keepalive",
-                        text: Scratch.translate('keepalive connection to game server? [ALIVE] and ping every [PING] seconds'),
+                        text: Scratch.translate('保持与游戏服务器的连接？ [ALIVE] 并每 [PING] 秒发送一次心跳'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             ALIVE: {
@@ -2271,7 +2271,7 @@
                     },
                     {
                         opcode: "set_verbose",
-                        text: Scratch.translate('set logging level to [LEVEL]'),
+                        text: Scratch.translate('将日志级别设置为 [LEVEL]'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             LEVEL: {
@@ -2283,7 +2283,7 @@
                     },
                     {
                         opcode: "auth_with_token",
-                        text: Scratch.translate('authenticate game server with token [TOKEN]'),
+                        text: Scratch.translate('使用令牌 [TOKEN] 验证游戏服务器'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             TOKEN: {
@@ -2294,12 +2294,12 @@
                     },
                     {
                         opcode: "auth_with_cookie",
-                        text: Scratch.translate('authenticate game server with cookie'),
+                        text: Scratch.translate('使用 Cookie 验证游戏服务器'),
                         blockType: Scratch.BlockType.COMMAND
                     },
                     {
                         opcode: "auth_with_name",
-                        text: Scratch.translate('authenticate game server with default token and set username to [USERNAME]'),
+                        text: Scratch.translate('使用默认令牌验证游戏服务器并将用户名设置为 [USERNAME]'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             USERNAME: {
@@ -2310,7 +2310,7 @@
                     },
                     {
                         opcode: "set_peerjs_server",
-                        text: Scratch.translate('using session server [SERVER] with key: [KEY] and ping every [PING] seconds'),
+                        text: Scratch.translate('使用会话服务器 [SERVER]，密钥：[KEY]，并每 [PING] 秒发送心跳'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             SERVER: {
@@ -2329,13 +2329,13 @@
                     },
                     {
                         opcode: "ice_list_builder",
-                        text: ["with ICE options"],
+                        text: [Scratch.translate("带 ICE 选项")],
                         blockType: Scratch.BlockType.CONDITIONAL,
                         branchCount: 1,
                     },
                     {
                         opcode: "set_stun_server",
-                        text: Scratch.translate('add STUN server [SERVER]'),
+                        text: Scratch.translate('添加 STUN 服务器 [SERVER]'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             SERVER: {
@@ -2346,7 +2346,7 @@
                     },
                     {
                         opcode: "set_turn_server",
-                        text: Scratch.translate('add TURN server [SERVER] with username [USER] and password [PASSWORD]'),
+                        text: Scratch.translate('添加 TURN 服务器 [SERVER]，用户名 [USER]，密码 [PASSWORD]'),
                         blockType: Scratch.BlockType.COMMAND,
                         arguments: {
                             SERVER: {
@@ -2365,44 +2365,44 @@
                     },
                     {
                         opcode: "set_relay_only",
-                        text: Scratch.translate('force TURN-based relay only mode'),
+                        text: Scratch.translate('强制仅使用基于 TURN 的中继模式'),
                         blockType: Scratch.BlockType.COMMAND,
                     },
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🕹️ Lobbies"),
+                        text: Scratch.translate("🕹️ 大厅"),
                     },
                     {
                         opcode: "get_relay_peer",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("relay peer ID"),
+                        text: Scratch.translate("中继对等方 ID"),
                     },
                     {
                         opcode: "lobby_host",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("current lobby host"),
+                        text: Scratch.translate("当前大厅主机"),
                     },
                     {
                         opcode: "lobby_list",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("all public lobbies"),
+                        text: Scratch.translate("所有公开大厅"),
                     },
                     {
                         opcode: "query_lobbies",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("refresh public lobbies list"),
+                        text: Scratch.translate("刷新公开大厅列表"),
                     },
                     "---",
                     {
                         opcode: "lobby_info",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("lobby info"),
+                        text: Scratch.translate("大厅信息"),
                     },
                     {
                         opcode: "query_lobby",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("get info about public lobby [LOBBY]"),
+                        text: Scratch.translate("获取关于公开大厅 [LOBBY] 的信息"),
                         arguments: {
                             LOBBY: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2431,20 +2431,20 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("⚙️ Lobby hosting"),
+                        text: Scratch.translate("⚙️ 大厅托管"),
                     },
                     {
                         opcode: "is_lobby_host",
                         blockType: Scratch.BlockType.BOOLEAN,
-                        text: Scratch.translate("am I the lobby host?"),
+                        text: Scratch.translate("我是大厅主机吗？"),
                     },
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("Set the limit to -1 to"),
+                        text: Scratch.translate("将限制设置为 -1 以"),
                     },
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("allow unlimited players."),
+                        text: Scratch.translate("允许无限玩家。"),
                     },
                     {
                         opcode: "init_host_mode",
@@ -2550,25 +2550,25 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🎭 Players"),
+                        text: Scratch.translate("🎭 玩家"),
                     },
                     {
                         opcode: "on_new_peer",
                         blockType: Scratch.BlockType.EVENT,
                         isEdgeActivated: false,
-                        text: Scratch.translate("when a new player connects"),
+                        text: Scratch.translate("当有新玩家连接时"),
                     },
                     {
                         opcode: "get_new_peer",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("newest player connected"),
+                        text: Scratch.translate("最新连接的玩家"),
                     },
                     "---",
                     {
                         opcode: "on_peer_left",
                         blockType: Scratch.BlockType.HAT,
                         isEdgeActivated: false,
-                        text: Scratch.translate("when player [ID] disconnects"),
+                        text: Scratch.translate("当玩家 [ID] 断开连接时"),
                         arguments: {
                             ID: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2579,18 +2579,18 @@
                     {
                         opcode: "get_last_peer",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("last player disconnected"),
+                        text: Scratch.translate("最后断开连接的玩家"),
                     },
                     "---",
                     {
                         opcode: "get_peers",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("connected players"),
+                        text: Scratch.translate("已连接的玩家"),
                     },
                     {
                         opcode: "get_peer_username",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("player [ID] username"),
+                        text: Scratch.translate("玩家 [ID] 用户名"),
                         arguments: {
                             ID: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2601,7 +2601,7 @@
                     {
                         opcode: "get_peer_accountid",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("player [ID] account ID"),
+                        text: Scratch.translate("玩家 [ID] 账号 ID"),
                         arguments: {
                             ID: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2612,7 +2612,7 @@
                     {
                         opcode: "get_peer_channels",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("player [PEER] channels"),
+                        text: Scratch.translate("玩家 [PEER] 的频道"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2623,7 +2623,7 @@
                     {
                         opcode: "is_peer_connected",
                         blockType: Scratch.BlockType.BOOLEAN,
-                        text: Scratch.translate("connected to peer [PEER]?"),
+                        text: Scratch.translate("已连接到对等方 [PEER]？"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2634,7 +2634,7 @@
                     {
                         opcode: "disconnect_peer",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("disconnect peer [PEER]"),
+                        text: Scratch.translate("断开对等方 [PEER]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2645,13 +2645,13 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("📡 Channels"),
+                        text: Scratch.translate("📡 通道"),
                     },
                     {
                         opcode: "on_new_dchan",
                         blockType: Scratch.BlockType.EVENT,
                         isEdgeActivated: false,
-                        text: Scratch.translate("when channel [CHANNEL] is created with peer [PEER]"),
+                        text: Scratch.translate("当通道 [CHANNEL] 与对等方 [PEER] 建立时"),
                         arguments: {
                             CHANNEL: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2691,7 +2691,7 @@
                         opcode: "on_close_dchan",
                         blockType: Scratch.BlockType.EVENT,
                         isEdgeActivated: false,
-                        text: Scratch.translate("when channel [CHANNEL] is closed with peer [PEER]"),
+                        text: Scratch.translate("当通道 [CHANNEL] 与对等方 [PEER] 关闭时"),
                         arguments: {
                             CHANNEL: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2738,7 +2738,7 @@
                     {
                         opcode: "get_global_channel_data",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("broadcast channel [CHANNEL]"),
+                        text: Scratch.translate("广播通道 [CHANNEL]"),
                         arguments: {
                             CHANNEL: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2831,16 +2831,16 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🔃 Data sync"),
+                        text: Scratch.translate("🔃 数据同步"),
                     },
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("Lists"),
+                        text: Scratch.translate("列表"),
                     },
                     {
                         opcode: "make_global_networked_list",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("sync list [LIST] with everyone using channel [CHANNEL] with [ID] as the network ID"),
+                        text: Scratch.translate("使用通道 [CHANNEL] 同步列表 [LIST] 给所有人，并将 [ID] 作为网络 ID"),
                         arguments: {
                             LIST: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2883,12 +2883,12 @@
                     },
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("Variables"),
+                        text: Scratch.translate("变量"),
                     },
                     {
                         opcode: "make_global_networked_var",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("sync [VAR] with everyone using channel [CHANNEL] with [ID] as the network ID"),
+                        text: Scratch.translate("使用通道 [CHANNEL] 将变量 [VAR] 与所有人同步，并将 [ID] 作为网络 ID"),
                         arguments: {
                             VAR: {
                                 type: Scratch.ArgumentType.STRING,
@@ -2932,12 +2932,12 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🎙️ Voice Chat"),
+                        text: Scratch.translate("🎙️ 语音聊天"),
                     },
                     {
                         opcode: "get_mic_perms",
                         blockType: Scratch.BlockType.BOOLEAN,
-                        text: Scratch.translate("do I have microphone access?"),
+                        text: Scratch.translate("我是否拥有麦克风访问权限？"),
                     },
                     {
                         opcode: "is_peer_vchan_open",
@@ -2969,7 +2969,7 @@
                     {
                         opcode: "request_mic_perms",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("request microphone access"),
+                        text: Scratch.translate("请求麦克风访问权限"),
                     },
                     {
                         opcode: "change_mic_state",
@@ -2994,7 +2994,7 @@
                         opcode: "when_peer_rings",
                         blockType: Scratch.BlockType.EVENT,
                         isEdgeActivated: false,
-                        text: Scratch.translate("when peer [ID] wants to voice call me"),
+                        text: Scratch.translate("当对等方 [ID] 想要语音呼叫我时"),
                         arguments: {
                             ID: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3006,7 +3006,7 @@
                         opcode: "when_peer_answers",
                         blockType: Scratch.BlockType.EVENT,
                         isEdgeActivated: false,
-                        text: Scratch.translate("when peer [ID] answers my voice call"),
+                        text: Scratch.translate("当对等方 [ID] 接听我的语音呼叫时"),
                         arguments: {
                             ID: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3018,7 +3018,7 @@
                         opcode: "when_peer_declines",
                         blockType: Scratch.BlockType.EVENT,
                         isEdgeActivated: false,
-                        text: Scratch.translate("when peer [ID] declines my voice call"),
+                        text: Scratch.translate("当对等方 [ID] 拒绝我的语音呼叫时"),
                         arguments: {
                             ID: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3029,7 +3029,7 @@
                     {
                         opcode: "new_vchan",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("call player [PEER]"),
+                        text: Scratch.translate("呼叫玩家 [PEER]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3066,7 +3066,7 @@
                     {
                         opcode: "close_vchan",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("hangup [PEER]"),
+                        text: Scratch.translate("挂断 [PEER]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3077,12 +3077,12 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🔊 Volume"),
+                        text: Scratch.translate("🔊 音量"),
                     },
                     {
                         opcode: "get_vchan_volume",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("player [PEER] voice volume"),
+                        text: Scratch.translate("玩家 [PEER] 语音音量"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3093,7 +3093,7 @@
                     {
                         opcode: "set_vchan_volume",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("set player [PEER] voice volume to [VOLUME]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音音量设置为 [VOLUME]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3108,7 +3108,7 @@
                     {
                         opcode: "change_vchan_volume",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("change player [PEER] voice volume by [STEPS]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音音量改变 [STEPS]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3123,12 +3123,12 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🗺️ X coordinate"),
+                        text: Scratch.translate("🗺️ X 坐标"),
                     },
                     {
                         opcode: "get_vchan_x",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("player [PEER] voice x position"),
+                        text: Scratch.translate("玩家 [PEER] 语音 X 坐标"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3139,7 +3139,7 @@
                     {
                         opcode: "set_vchan_x",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("set player [PEER] voice x position to [X]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音 X 坐标设置为 [X]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3154,7 +3154,7 @@
                     {
                         opcode: "change_vchan_x",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("change player [PEER] voice x position by [STEPS]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音 X 坐标改变 [STEPS]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3169,12 +3169,12 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🗺️ Y coordinate"),
+                        text: Scratch.translate("🗺️ Y 坐标"),
                     },
                     {
                         opcode: "get_vchan_y",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("player [PEER] voice y position"),
+                        text: Scratch.translate("玩家 [PEER] 语音 Y 坐标"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3185,7 +3185,7 @@
                     {
                         opcode: "set_vchan_y",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("set player [PEER] voice y position to [Y]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音 Y 坐标设置为 [Y]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3200,7 +3200,7 @@
                     {
                         opcode: "change_vchan_y",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("change player [PEER] voice y position by [STEPS]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音 Y 坐标改变 [STEPS]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3215,12 +3215,12 @@
                     "---",
                     {
                         blockType: Scratch.BlockType.LABEL,
-                        text: Scratch.translate("🗺️ Z coordinate"),
+                        text: Scratch.translate("🗺️ Z 坐标"),
                     },
                     {
                         opcode: "get_vchan_z",
                         blockType: Scratch.BlockType.REPORTER,
-                        text: Scratch.translate("player [PEER] voice z position"),
+                        text: Scratch.translate("玩家 [PEER] 语音 Z 坐标"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3231,7 +3231,7 @@
                     {
                         opcode: "set_vchan_z",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("set player [PEER] voice z position to [Z]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音 Z 坐标设置为 [Z]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3246,7 +3246,7 @@
                     {
                         opcode: "change_vchan_z",
                         blockType: Scratch.BlockType.COMMAND,
-                        text: Scratch.translate("change player [PEER] voice z position by [STEPS]"),
+                        text: Scratch.translate("将玩家 [PEER] 的语音 Z 坐标改变 [STEPS]"),
                         arguments: {
                             PEER: {
                                 type: Scratch.ArgumentType.STRING,
@@ -3262,26 +3262,26 @@
                 menus: {
                     ordered_menu: {
                         items: [
-                            { text: Scratch.translate("speed over ordered messages"), value: "false" },
-                            { text: Scratch.translate("order over speedy messages"), value: "true" },
+                            { text: Scratch.translate("优先速度（无序）"), value: "false" },
+                            { text: Scratch.translate("优先顺序（有序）"), value: "true" },
                         ]
                     },
                     verbose_levels: {
                         items: [
-                            { text: Scratch.translate("nothing"), value: "0" },
-                            { text: Scratch.translate("errors"), value: "1" },
-                            { text: Scratch.translate("warnings and errors"), value: "2" },
-                            { text: Scratch.translate("everything"), value: "3" }
+                            { text: Scratch.translate("无"), value: "0" },
+                            { text: Scratch.translate("错误"), value: "1" },
+                            { text: Scratch.translate("警告和错误"), value: "2" },
+                            { text: Scratch.translate("全部"), value: "3" }
                         ]
                     },
                     mic_state: {
                         items: [
                             {
-                                text: Scratch.translate("mute"),
+                                text: Scratch.translate("静音"),
                                 value: "0",
                             },
                             {
-                                text: Scratch.translate("unmute"),
+                                text: Scratch.translate("取消静音"),
                                 value: "1",
                             },
                         ],
@@ -3296,7 +3296,7 @@
                     const server = Scratch.Cast.toString(args.SERVER);
                     const parsed = new URL(server);
                     if (["ws:", "wss:"].includes(parsed.protocol)) this.conn_builder.server_url = server;
-                    else alert("Invalid protocol for game server URL argument. Expected ws: or wss:, got " + parsed.protocol);
+                    else alert("游戏服务器 URL 参数协议无效。期望为 ws: 或 wss:，但得到 " + parsed.protocol);
                 } catch (e) {
                     alert(e);
                 }
@@ -3353,7 +3353,7 @@
                     const server = Scratch.Cast.toString(args.SERVER);
                     const parsed = new URL(server);
                     if (["stun:", "stuns:"].includes(parsed.protocol)) this.ice_servers.push({ urls: server });
-                    else alert("Invalid protocol for STUN server URL argument. Expected stun: or stuns:, got " + parsed.protocol);
+                    else alert("STUN 服务器 URL 参数协议无效。期望为 stun: 或 stuns:，但得到 " + parsed.protocol);
                 } catch (e) {
                     alert(e);
                 }
@@ -3370,7 +3370,7 @@
                         username: Scratch.Cast.toString(args.USER),
                         credential: Scratch.Cast.toString(args.PASSWORD),
                     });
-                    else alert("Invalid protocol for TURN server URL argument. Expected turn: or turns:, got " + parsed.protocol);
+                    else alert("TURN 服务器 URL 参数协议无效。期望为 turn: 或 turns:，但得到 " + parsed.protocol);
                 } catch (e) {
                     alert(e);
                 }
@@ -3387,7 +3387,7 @@
             if (util.stackFrame.undo_conn_builder) {
                 util.stackFrame.undo_conn_builder = false;
                 const builder = util.stackFrame.conn_builder;
-                if (!builder.server_url) return alert('No game server address was specified. Please use the "using game server" block.');
+                if (!builder.server_url) return alert('未指定游戏服务器地址。请使用“使用游戏服务器（using game server）”积木块。');
 
                 // Clean up
                 util.stackFrame.conn_builder = undefined;
@@ -3551,7 +3551,7 @@
                 this.lastPeerError = peer._lastServerId;
                 Scratch.vm.runtime.startHats('mikedevcl5_on_player_session_error');
                 if (err.toString().includes("Error: Could not connect to peer ")) {
-                    if (this.verbose_logs) console.log("Attempting to reconnect to peer", peer._lastServerId, "in a second from now...");
+                    if (this.verbose_logs) console.log("正在尝试在 1 秒后重新连接对等方", peer._lastServerId, "...");
                     this.net.disconnect_peer(peer._lastServerId);
                     setTimeout(() => {
                         this.net.connect_to_peer(peer._lastServerId);
@@ -3563,7 +3563,7 @@
                 this.conn = new WebSocket(args.server_url);
 
                 this.conn.onopen = async () => {
-                    console.log("WebSocket connection opened.");
+                    console.log("WebSocket 连接已打开。");
 
                     Scratch.vm.runtime.startHats("mikedevcl5_on_connect");
 
@@ -3606,7 +3606,7 @@
                 this.conn.onerror = (error) => console.error("WebSocket error:", error);
 
                 this.conn.onclose = async () => {
-                    console.log("WebSocket connection closed.");
+                    console.log("WebSocket 连接已关闭。");
                     this.conn.close();
                     this.net.destroy();
 
@@ -3680,7 +3680,7 @@
                     break;
 
                 case "LOBBY_CLOSED":
-                    alert("The lobby was closed.");
+                    alert("大厅已关闭。");
                     this.net.disconnect_all_peers();
                     break;
 
@@ -3705,7 +3705,7 @@
                 case "KEEPALIVE_ACK":
                     setTimeout(() => {
                         if (this.conn && this.conn.readyState === this.conn.OPEN) {
-                            if (args.log && args.log > 2) console.log("Connection was kept alive.");
+                            if (args.log && args.log > 2) console.log("连接被保持存活。");
                             this.emitMessage("KEEPALIVE", null);
                         }
                     }, args.keepalive.delay * 1000);
@@ -3867,7 +3867,7 @@
             return new Promise((resolve) => {
                 callbacks.bind("management", (result) => {
                     callbacks.unbind("management", "*");
-                    if (this.verbose_logs) console.log("Set lock flag result:", result);
+                    if (this.verbose_logs) console.log("设置锁标志结果：", result);
                     resolve();
                 })
             })
@@ -3879,7 +3879,7 @@
             return new Promise((resolve) => {
                 callbacks.bind("management", (result) => {
                     callbacks.unbind("management", "*");
-                    if (this.verbose_logs) console.log("Set player limit result:", result);
+                    if (this.verbose_logs) console.log("设置玩家上限结果：", result);
                     resolve();
                 })
             })
@@ -3891,7 +3891,7 @@
             return new Promise((resolve) => {
                 callbacks.bind("management", (result) => {
                     callbacks.unbind("management", "*");
-                    if (this.verbose_logs) console.log("Set lobby password result:", result);
+                    if (this.verbose_logs) console.log("设置大厅密码结果：", result);
                     resolve();
                 })
             })
@@ -3903,7 +3903,7 @@
             return new Promise((resolve) => {
                 callbacks.bind("management", (result) => {
                     callbacks.unbind("management", "*");
-                    if (this.verbose_logs) console.log("Kick peer result:", result);
+                    if (this.verbose_logs) console.log("踢出对等方结果：", result);
                     resolve();
                 })
             })
@@ -3938,7 +3938,7 @@
             return new Promise((resolve) => {
                 callbacks.bind("management", (result) => {
                     callbacks.unbind("management", "*");
-                    if (this.verbose_logs) console.log("Close lobby result:", result);
+                    if (this.verbose_logs) console.log("关闭大厅结果：", result);
                     resolve();
                 })
             })
@@ -3950,7 +3950,7 @@
             return new Promise((resolve) => {
                 callbacks.bind("management", (result) => {
                     callbacks.unbind("management", "*");
-                    if (this.verbose_logs) console.log("Transfer ownership of lobby result:", result);
+                    if (this.verbose_logs) console.log("转移大厅所有权结果：", result);
                     resolve();
                 })
             })
@@ -4142,7 +4142,7 @@
 
             // Don't overwrite an existing network ID
             if (this.netid_proxies.has(ID)) {
-                alert("The network ID " + ID + " is already in use by another variable or list. Please choose a different ID.");
+                alert("网络 ID " + ID + " 已被其它变量或列表使用。请选择一个不同的 ID。");
                 return;
             };
 
@@ -4209,7 +4209,7 @@
 
             // Don't overwrite an existing network ID
             if (this.netid_proxies.has(ID)) {
-                alert("The network ID " + ID + " is already in use by another variable or list. Please choose a different ID.");
+                alert("网络 ID " + ID + " 已被其它变量或列表使用。请选择一个不同的 ID。");
                 return;
             };
 
@@ -4276,7 +4276,7 @@
 
             // Don't overwrite an existing network ID
             if (this.netid_proxies.has(ID)) {
-                alert("The network ID " + ID + " is already in use by another variable or list. Please choose a different ID.");
+                alert("网络 ID " + ID + " 已被其它变量或列表使用。请选择一个不同的 ID。");
                 return;
             };
 
@@ -4313,7 +4313,7 @@
 
             // Don't overwrite an existing network ID
             if (this.netid_proxies.has(ID)) {
-                alert("The network ID " + ID + " is already in use by another variable or list. Please choose a different ID.");
+                alert("网络 ID " + ID + " 已被其它变量或列表使用。请选择一个不同的 ID。");
                 return;
             };
 
