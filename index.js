@@ -75,6 +75,12 @@
         }
     }
 
+    // STUN/TURN Server Configuration
+    const DEFAULT_STUN_SERVERS = ["stun:vpn.cloudlink-omega-next:3478", "stun:vpn.cloudlink-omega-next:5349"];
+    const DEFAULT_TURN_SERVER = "turn:vpn.cloudlink-omega-next:5349";
+    const DEFAULT_TURN_USERNAME = "free";
+    const DEFAULT_TURN_PASSWORD = "free";
+
     // Ah yes, Perry the Platypus! It seems you have found my Callback-inator!
     class CallbackInator {
         constructor() {
@@ -2250,7 +2256,7 @@
                         arguments: {
                             SERVER: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "wss://cl5-peerjs.mikedev101.cc?ugi=debug",
+                                defaultValue: "wss://cl5-peerjs.cloudlink-omega-next?ugi=debug",
                             }
                         }
                     },
@@ -2340,7 +2346,7 @@
                         arguments: {
                             SERVER: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "stun:vpn.mikedev101.cc:5349",
+                                defaultValue: DEFAULT_STUN_SERVERS[0],
                             }
                         }
                     },
@@ -2351,15 +2357,15 @@
                         arguments: {
                             SERVER: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "turn:vpn.mikedev101.cc:5349",
+                                defaultValue: DEFAULT_TURN_SERVER,
                             },
                             USER: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "free",
+                                defaultValue: DEFAULT_TURN_USERNAME,
                             },
                             PASSWORD: {
                                 type: Scratch.ArgumentType.STRING,
-                                defaultValue: "free",
+                                defaultValue: DEFAULT_TURN_PASSWORD,
                             }
                         }
                     },
