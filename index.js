@@ -1113,6 +1113,7 @@
             this.globalChannelData = new Map();
             this.last_private_message_peer = "";
             this.last_private_message_channel = "";
+            this.peer_id_mapping = new Map();
         }
 
         /**
@@ -1247,6 +1248,18 @@
                     callbacks.call("plist", conn.peer, chan.label, data);
                     break;
                 
+                case "USERNAME_INFO":
+                    if (payload && payload.username) {
+                        this.peer_usernames.set(payload.instance_id, payload.username);
+                        this.peer_accountids.set(payload.instance_id, payload.user_id);
+                        this.peer_usernames.set(conn.peer, payload.username);
+                        this.peer_accountids.set(conn.peer, payload.user_id);
+                        if (payload.instance_id !== conn.peer) {
+                            this.peer_id_mapping.set(payload.instance_id, conn.peer);
+                        }
+                    }
+                    break;
+                
                 case "HANGUP":
                 case "DECLINE":
                     this.hangup_call(conn.peer);
@@ -1331,9 +1344,20 @@
                 this.handle_channel_open(conn, conn);
                 if (conn.label === "default") {
                     this.newest_connected = conn.peer;
+                    this.data_connections.set(conn.peer, conn);
+                    if (this.username) {
+                        this.send_message_to_peer({
+                            opcode: "USERNAME_INFO",
+                            payload: {
+                                username: this.username,
+                                user_id: this.user_id,
+                                instance_id: this.instance_id
+                            }
+                        }, conn.peer, "default");
+                    }
                     callbacks.call("onpeerconnect", conn.peer);
                 } else {
-                    
+                    this.data_connections.set(conn.peer, conn);
                     callbacks.call("on_chan_open");
                 }
             });
@@ -1393,7 +1417,6 @@
             this.peer.on("connection", (conn) => {
                 conn.idCounter = 2;
                 conn.channels = new Map();
-                this.data_connections.set(conn.peer, conn);
                 this.handle_data_connection(conn);
             });
             this.peer.on("call", async (call) => {
@@ -1424,16 +1447,42 @@
          * and sets up event handlers to manage the connection lifecycle.
          */
         connect_to_peer(ID) {
-            if (!this.is_connected()) return;
-            if (this.data_connections.has(ID)) return;
-            const conn = this.peer.connect(ID, {
-                label: "default",
-                reliable: true,
+            return new Promise((resolve) => {
+                if (!this.is_connected()) {
+                    resolve();
+                    return;
+                }
+                if (this.data_connections.has(ID)) {
+                    resolve();
+                    return;
+                }
+                const conn = this.peer.connect(ID, {
+                    label: "default",
+                    reliable: true,
+                });
+
+                conn.on("open", () => {
+                    if (conn.peer !== ID) {
+                        this.peer_id_mapping.set(ID, conn.peer);
+                        if (this.peer_usernames.has(ID)) {
+                            this.peer_usernames.set(conn.peer, this.peer_usernames.get(ID));
+                        }
+                        if (this.peer_accountids.has(ID)) {
+                            this.peer_accountids.set(conn.peer, this.peer_accountids.get(ID));
+                        }
+                    }
+                    resolve();
+                });
+
+                conn.on("error", (err) => {
+                    console.error("Error connecting to peer:", err);
+                    resolve();
+                });
+
+                conn.idCounter = 2;
+                conn.channels = new Map();
+                this.handle_data_connection(conn);
             });
-            this.data_connections.set(conn.peer, conn);
-            conn.idCounter = 2;
-            conn.channels = new Map();
-            this.handle_data_connection(conn);
         }
 
         /**
@@ -1444,10 +1493,22 @@
          */
         disconnect_peer(ID) {
             if (!this.peer) return;
-            if (!this.data_connections.has(ID)) return;
-            this.data_connections.get(ID).close();
-            this.data_connections.delete(ID);
-            this.hangup_call(ID);
+            
+            if (!this.data_connections) return;
+            
+            let actualID = ID;
+            if (!this.data_connections.has(ID) && this.peer_id_mapping && this.peer_id_mapping.has(ID)) {
+                actualID = this.peer_id_mapping.get(ID);
+            }
+            
+            if (!this.data_connections.has(actualID)) return;
+            this.data_connections.get(actualID).close();
+            this.data_connections.delete(actualID);
+            if (this.peer_id_mapping) {
+                this.peer_id_mapping.delete(ID);
+                this.peer_id_mapping.delete(actualID);
+            }
+            this.hangup_call(actualID);
         }
 
         /**
@@ -1458,8 +1519,19 @@
          */
         is_other_peer_connected(ID) {
             if (!this.peer) return false;
-            if (!this.data_connections.has(ID)) return false;
-            return !this.data_connections.get(ID).disconnected;
+            
+            if (this.data_connections && this.data_connections.has(ID)) {
+                return !this.data_connections.get(ID).disconnected;
+            }
+            
+            if (this.peer_id_mapping && this.peer_id_mapping.has(ID)) {
+                const actualID = this.peer_id_mapping.get(ID);
+                if (this.data_connections && this.data_connections.has(actualID)) {
+                    return !this.data_connections.get(actualID).disconnected;
+                }
+            }
+            
+            return false;
         }
 
         /**
@@ -1602,7 +1674,7 @@
 
             // Disconnect from all voice connections
             this.voice_connections.forEach((conn) => {
-                if (conn.peerConnection) conn.peerConnection.close();
+                if (conn.call) conn.call.close();
             });
 
             // Cleanup
@@ -1706,7 +1778,13 @@
         }
 
         async request_microphone_permissions() {
-            if (!this.hasMicPerms && await Scratch.canRecordAudio()) this.hasMicPerms = true;
+            if (this.hasMicPerms) return;
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                this.hasMicPerms = true;
+            } catch (e) {
+                console.warn("无法获取麦克风权限：", e);
+            }
         }
 
         /**
@@ -1750,7 +1828,26 @@
          * @returns {boolean} - True if the voice connection is connected, false otherwise or if the peer doesn't exist.
          */
         is_peer_voice_connected(ID) {
-            return this.voice_connections.has(ID);
+            if (this.voice_connections.has(ID)) {
+                return true;
+            }
+            
+            if (this.peer_id_mapping) {
+                if (this.peer_id_mapping.has(ID)) {
+                    const actualID = this.peer_id_mapping.get(ID);
+                    if (this.voice_connections.has(actualID)) {
+                        return true;
+                    }
+                }
+                
+                for (const [instanceId, actualPeer] of this.peer_id_mapping) {
+                    if (actualPeer === ID && this.voice_connections.has(instanceId)) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
         }
 
         /**
@@ -1776,26 +1873,22 @@
                 return await this.answer_call(ID);
             };
 
-            if (!this.hasMicPerms && await Scratch.canRecordAudio()) this.hasMicPerms = true;
-            if (!this.hasMicPerms) return;
-
             const lock_id = "mikedevcl5_" + ID + "_call";
             await navigator.locks.request(
                 lock_id,
                 { ifAvailable: true },
                 async () => {
-                    await navigator.mediaDevices
-                    .getUserMedia({ audio: true })
-                    .then(async(localStream) => {
+                    try {
+                        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        this.hasMicPerms = true;
                         if (!this.localStreams.has(ID)) this.localStreams.set(ID, localStream);
                         if (this.verbose_logs) console.log("获取到本地媒体流：", localStream);
                         if (this.verbose_logs) console.log("正在呼叫对等方", ID);
                         const call = await this.peer.call(ID, localStream);
                         this.handle_call(ID, call);
-                    })
-                    .catch((e) => {
-                        if (this.verbose_logs) console.warn(`Failed to get local stream: ${e}`);
-                    });
+                    } catch (e) {
+                        console.warn("无法获取麦克风权限：", e);
+                    }
                 }
             );
         }
@@ -1817,7 +1910,7 @@
 
             if (this.ringing_peers.has(ID)) {
                 this.ringing_peers.get(ID).close();
-                this.voice_connections.delete(ID);
+                this.ringing_peers.delete(ID);
             };
         }
 
@@ -1837,9 +1930,6 @@
             if (!this.peer) return;
             if (!this.is_other_peer_connected(ID)) return;
             if (!this.ringing_peers.has(ID)) return;
-
-            if (!this.hasMicPerms && await Scratch.canRecordAudio()) this.hasMicPerms = true;
-            if (!this.hasMicPerms) return;
             
             const call = this.ringing_peers.get(ID);
             const lock_id = "mikedevcl5_" + ID + "_call";
@@ -1847,17 +1937,16 @@
                 lock_id,
                 { ifAvailable: true },
                 async () => {
-                    await navigator.mediaDevices
-                    .getUserMedia({ audio: true })
-                    .then(async(localStream) => {
+                    try {
+                        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        this.hasMicPerms = true;
                         if (!this.localStreams.has(ID)) this.localStreams.set(ID, localStream);
                         if (this.verbose_logs) console.log("获取到本地媒体流：", localStream);
                         if (this.verbose_logs) console.log("正在接听来自对等方的呼叫", ID);
                         call.answer(localStream);
-                    })
-                    .catch((e) => {
-                        if (this.verbose_logs) console.warn(`Failed to get local stream: ${e}`);
-                    });
+                    } catch (e) {
+                        console.warn("无法获取麦克风权限：", e);
+                    }
                 }
             );
         }
@@ -1885,7 +1974,7 @@
             }
 
             call.on("stream", (remoteStream) => {
-                this.build_audio_flow(id, remoteStream);
+                this.build_audio_flow(id, remoteStream, call);
             });
 
             call.on("close", () => {
@@ -1906,7 +1995,7 @@
             });
         }
 
-        build_audio_flow(id, stream) {
+        build_audio_flow(id, stream, call) {
             if (!this.audioContext) {
                 this.audioContext = vm.runtime.audioEngine.audioContext;
                 if (!this.audioContext) throw new Error("Audio context not found or not yet initialized!");
@@ -3660,7 +3749,7 @@
 
                 case "RELAY":
                     this.relay_peer = payload;
-                    this.net.connect_to_peer(payload);
+                    await this.net.connect_to_peer(payload);
                     break;
 
                 case "NEW_PEER":
@@ -3670,13 +3759,18 @@
                     }
                     this.peer_usernames.set(payload.instance_id, payload.username);
                     this.peer_accountids.set(payload.instance_id, payload.user_id);
-                    this.net.connect_to_peer(payload.instance_id);
+                    await this.net.connect_to_peer(payload.instance_id);
                     break;
 
                 case "PEER_LEFT":
                     this.net.disconnect_peer(payload);
                     this.peer_usernames.delete(payload);
                     this.peer_accountids.delete(payload);
+                    if (this.net && this.net.peer_id_mapping && this.net.peer_id_mapping.has(payload)) {
+                        const actualPeer = this.net.peer_id_mapping.get(payload);
+                        this.peer_usernames.delete(actualPeer);
+                        this.peer_accountids.delete(actualPeer);
+                    }
                     break;
 
                 case "NEW_LOBBY":
@@ -3731,8 +3825,13 @@
 
                 case "INIT_OK":
                     this.instance_id = payload.instance_id;
-                    this.user_id = payload.instance_id;
+                    this.user_id = payload.user_id;
                     this.username = payload.username;
+                    
+                    if (this.username) {
+                        this.peer_usernames.set(this.instance_id, this.username);
+                        this.peer_accountids.set(this.instance_id, this.user_id);
+                    }
                     
                     let settings = {};
                     settings.config = {};
@@ -3976,12 +4075,64 @@
 
         get_peer_username({ ID }) {
             const peer = Scratch.Cast.toString(ID);
-            return this.net.is_other_peer_connected(peer) && this.peer_usernames.has(peer) ? this.peer_usernames.get(peer) : "";
+            
+            if (peer === this.instance_id && this.username) {
+                return this.username;
+            }
+            
+            if (!this.net.is_other_peer_connected(peer)) return "";
+            
+            if (this.peer_usernames.has(peer)) {
+                return this.peer_usernames.get(peer);
+            }
+            
+            if (this.net.peer_id_mapping) {
+                if (this.net.peer_id_mapping.has(peer)) {
+                    const actualPeer = this.net.peer_id_mapping.get(peer);
+                    if (this.peer_usernames.has(actualPeer)) {
+                        return this.peer_usernames.get(actualPeer);
+                    }
+                }
+                
+                for (const [instanceId, actualPeer] of this.net.peer_id_mapping) {
+                    if (actualPeer === peer && this.peer_usernames.has(instanceId)) {
+                        return this.peer_usernames.get(instanceId);
+                    }
+                }
+            }
+            
+            return "";
         }
 
         get_peer_accountid({ ID }) {
             const peer = Scratch.Cast.toString(ID);
-            return this.net.is_other_peer_connected(peer) && this.peer_accountids.has(peer) ? this.peer_accountids.get(peer) : "";
+            
+            if (peer === this.instance_id && this.user_id) {
+                return this.user_id;
+            }
+            
+            if (!this.net.is_other_peer_connected(peer)) return "";
+            
+            if (this.peer_accountids.has(peer)) {
+                return this.peer_accountids.get(peer);
+            }
+            
+            if (this.net.peer_id_mapping) {
+                if (this.net.peer_id_mapping.has(peer)) {
+                    const actualPeer = this.net.peer_id_mapping.get(peer);
+                    if (this.peer_accountids.has(actualPeer)) {
+                        return this.peer_accountids.get(actualPeer);
+                    }
+                }
+                
+                for (const [instanceId, actualPeer] of this.net.peer_id_mapping) {
+                    if (actualPeer === peer && this.peer_accountids.has(instanceId)) {
+                        return this.peer_accountids.get(instanceId);
+                    }
+                }
+            }
+            
+            return "";
         }
 
         get_peer_channels({ PEER }) {
@@ -4078,9 +4229,10 @@
         }
 
         async close_vchan({ PEER }) {
-            if (!this.net.is_peer_voice_connected(PEER)) return;
-            await this.net.send_message_to_peer({opcode: "HANGUP"}, Scratch.Cast.toString(PEER), "default");
-            this.net.hangup_call(Scratch.Cast.toString(PEER));
+            const peer = Scratch.Cast.toString(PEER);
+            if (!this.net.is_peer_voice_connected(peer)) return;
+            await this.net.send_message_to_peer({opcode: "HANGUP"}, peer, "default");
+            this.net.hangup_call(peer);
         }
 
         answer_vchan({ PEER }) {
