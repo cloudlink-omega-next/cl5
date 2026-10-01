@@ -56,12 +56,12 @@
             return this;
         }
 
-        emit(event, payload) {
+        emit(event, ...args) {
             if (!this._events || !this._events[event]) return this;
             const listeners = this._events[event].slice();
             for (let i = 0; i < listeners.length; i++) {
                 try {
-                    listeners[i](payload);
+                    listeners[i](...args);
                 } catch (e) {
                     console.error(`CL5 listener error [${event}]:`, e);
                 }
@@ -73,25 +73,24 @@
     class Encryption {
         constructor() {
             this.publicKey = '';
-            this.privateKey = '';
+            this.keyPair = null;
             this.sharedKeys = new Map();
         }
 
         hasKeyPair() {
-            return this.publicKey !== '' && this.privateKey !== '';
+            return !!(this.keyPair && this.keyPair.publicKey && this.keyPair.privateKey);
         }
 
         async generateKeyPair() {
             if (!window.crypto || !window.crypto.subtle) {
                 throw new Error('Web Crypto API is not supported in this browser.');
             }
-            const keyPair = await window.crypto.subtle.generateKey(
+            this.keyPair = await window.crypto.subtle.generateKey(
                 { name: 'ECDH', namedCurve: 'P-256' },
-                true,
+                false,
                 ['deriveKey', 'deriveBits']
             );
-            this.publicKey = await this.exportPublicKey(keyPair.publicKey);
-            this.privateKey = await this.exportPrivateKey(keyPair.privateKey);
+            this.publicKey = await this.exportPublicKey(this.keyPair.publicKey);
         }
 
         async exportPublicKey(pubKey) {
@@ -111,30 +110,8 @@
                 'spki',
                 exportedKeyArray,
                 { name: 'ECDH', namedCurve: 'P-256' },
-                true,
+                false,
                 []
-            );
-        }
-
-        async exportPrivateKey(privKey) {
-            if (!window.crypto || !window.crypto.subtle) {
-                throw new Error('Web Crypto API is not supported in this browser.');
-            }
-            const exportedKey = await window.crypto.subtle.exportKey('pkcs8', privKey);
-            return this.arrayBufferToBase64(new Uint8Array(exportedKey));
-        }
-
-        async importPrivateKey(exportedKey) {
-            if (!window.crypto || !window.crypto.subtle) {
-                throw new Error('Web Crypto API is not supported in this browser.');
-            }
-            const exportedKeyArray = this.base64ToArrayBuffer(exportedKey);
-            return await window.crypto.subtle.importKey(
-                'pkcs8',
-                exportedKeyArray,
-                { name: 'ECDH', namedCurve: 'P-256' },
-                true,
-                ['deriveKey', 'deriveBits']
             );
         }
 
@@ -142,45 +119,31 @@
             if (!window.crypto || !window.crypto.subtle) {
                 throw new Error('Web Crypto API is not supported in this browser.');
             }
+            if (!this.hasKeyPair()) {
+                throw new Error('No key pair available. Call generateKeyPair() first.');
+            }
+            if (!publicKey) {
+                throw new Error('A remote public key is required to derive a shared key.');
+            }
             const pubkey = await this.importPublicKey(publicKey);
-            const privkey = await this.importPrivateKey(this.privateKey);
             const shared = await window.crypto.subtle.deriveKey(
                 { name: 'ECDH', public: pubkey },
-                privkey,
+                this.keyPair.privateKey,
                 { name: 'AES-GCM', length: 256 },
-                true,
+                false,
                 ['encrypt', 'decrypt']
             );
-            this.sharedKeys.set(id, await this.exportSharedKey(shared));
-        }
-
-        async exportSharedKey(sharedKey) {
-            if (!window.crypto || !window.crypto.subtle) {
-                throw new Error('Web Crypto API is not supported in this browser.');
-            }
-            const exportedKey = await window.crypto.subtle.exportKey('raw', sharedKey);
-            return this.arrayBufferToBase64(new Uint8Array(exportedKey));
-        }
-
-        async importSharedKey(exportedKey) {
-            if (!window.crypto || !window.crypto.subtle) {
-                throw new Error('Web Crypto API is not supported in this browser.');
-            }
-            const exportedKeyArray = this.base64ToArrayBuffer(exportedKey);
-            return await window.crypto.subtle.importKey(
-                'raw',
-                exportedKeyArray,
-                { name: 'AES-GCM', length: 256 },
-                true,
-                ['encrypt', 'decrypt']
-            );
+            this.sharedKeys.set(id, shared);
         }
 
         async encrypt(message, id) {
             if (!window.crypto || !window.crypto.subtle) {
                 throw new Error('Web Crypto API is not supported in this browser.');
             }
-            const shared = await this.importSharedKey(this.sharedKeys.get(id));
+            const shared = this.sharedKeys.get(id);
+            if (!shared) {
+                throw new Error('No shared key for "' + id + '". Call deriveSharedKey() first.');
+            }
             const encodedMessage = new TextEncoder().encode(message);
             const iv = window.crypto.getRandomValues(new Uint8Array(12));
             const encryptedMessage = await window.crypto.subtle.encrypt(
@@ -195,7 +158,10 @@
             if (!window.crypto || !window.crypto.subtle) {
                 throw new Error('Web Crypto API is not supported in this browser.');
             }
-            const shared = await this.importSharedKey(this.sharedKeys.get(id));
+            const shared = this.sharedKeys.get(id);
+            if (!shared) {
+                throw new Error('No shared key for "' + id + '". Call deriveSharedKey() first.');
+            }
             const encryptedMessageArray = this.base64ToArrayBuffer(encryptedMessageBase64);
             const iv = this.base64ToArrayBuffer(ivBase64);
             const decryptedMessage = await window.crypto.subtle.decrypt(
@@ -232,7 +198,7 @@
             this.ws = null;
             this.peer = null;
             this.connections = new Map();
-            this.channels = new Map();
+            this.globalChannels = new Map();
             this.voiceCalls = new Map();
             this.localStreams = new Map();
             this.ringing = new Map();
@@ -262,12 +228,12 @@
             this.netIdProxies = new Map();
             this.netIdMeta = new Map();
             this.voiceMeta = new Map();
+            this.voiceAudio = new Map();
             this.encryption = new Encryption();
             this.lastErrorMessage = '';
             this.lastPeerError = '';
             this._reconnectEnabled = false;
             this._reconnectAttempts = new Map();
-            this.netUpdateTracker = new Map();
         }
 
         log(...args) {
@@ -394,7 +360,6 @@
                 try { ch.chan.close(); } catch (e) { /* ignore */ }
             }
             conn.channels.clear();
-            this.channels.delete(peerId);
         }
 
         _getOrCreateChannels(peerId) {
@@ -437,29 +402,27 @@
                     }
                     break;
 
-                case 'G_MSG':
-                    this.channels.forEach((_, key) => {
-                        if (key.startsWith('global:')) {
-                            const ch = key.split(':')[1];
-                            if (ch && data.payload !== undefined) {
-                                const store = this.channels.get(key);
-                                if (store) store.data = data.payload;
-                            }
-                        }
-                    });
-                    this.emit('broadcast', payload && payload.channel, data.payload);
+                case 'G_MSG': {
+                    const globalChannel = payload && payload.channel ? String(payload.channel) : '';
+                    if (globalChannel) {
+                        this.globalChannels.set(globalChannel, data.payload);
+                    }
+                    this.emit('broadcast', globalChannel, data.payload);
                     break;
+                }
 
-                case 'P_MSG':
+                case 'P_MSG': {
+                    const privateChannel = payload && payload.channel ? String(payload.channel) : '';
                     if (data.payload !== undefined) {
-                        const key = `private:${peerId}:${payload && payload.channel}`;
-                        const store = this.channels.get(key);
-                        if (store) store.data = data.payload;
+                        const target = this.connections.get(peerId);
+                        const record = target && target.channels ? target.channels.get(privateChannel) : null;
+                        if (record) record.data = data.payload;
                     }
                     this.lastPrivateMessagePeer = String(peerId);
-                    this.lastPrivateMessageChannel = payload && payload.channel ? String(payload.channel) : '';
-                    this.emit('message', peerId, payload && payload.channel, data.payload);
+                    this.lastPrivateMessageChannel = privateChannel;
+                    this.emit('message', peerId, privateChannel, data.payload);
                     break;
+                }
 
                 case 'NEW_CHAN': {
                     const conn = this.connections.get(peerId);
@@ -519,26 +482,40 @@
                 stream.getTracks().forEach(t => t.stop());
             }
             this.localStreams.delete(peerId);
+            this._teardownAudioFlow(peerId);
+        }
+
+        _teardownAudioFlow(peerId) {
+            const audio = this.voiceAudio.get(peerId);
+            if (audio) {
+                if (audio.pc && typeof audio.pc.removeEventListener === 'function') {
+                    try { audio.pc.removeEventListener('track', audio.onTrack); } catch (e) { /* ignore */ }
+                }
+                if (audio.audioCtx) {
+                    try { audio.audioCtx.close(); } catch (e) { /* ignore */ }
+                }
+                this.voiceAudio.delete(peerId);
+            }
+            this.voiceMeta.delete(peerId);
         }
 
         async _ensureMic(peerId) {
-            if (!this.hasMicPerms) {
-                await navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then((stream) => {
-                        this.hasMicPerms = true;
-                        stream.getTracks().forEach(t => t.stop());
-                    })
-                    .catch((err) => {
-                        throw new Error('Microphone permission denied: ' + err.message);
-                    });
+            if (this.localStreams.has(peerId)) {
+                this.hasMicPerms = true;
+                return;
             }
-            if (!this.localStreams.has(peerId)) {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                this.localStreams.set(peerId, stream);
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err) {
+                throw new Error('Microphone permission denied: ' + err.message);
             }
+            this.hasMicPerms = true;
+            this.localStreams.set(peerId, stream);
         }
 
         async _setupAudioFlow(peerId) {
+            if (this.voiceAudio.has(peerId)) return;
             await this._ensureMic(peerId);
             const call = this.voiceCalls.get(peerId);
             if (!call) return;
@@ -549,7 +526,7 @@
             const source = audioCtx.createMediaStreamSource(localStream);
             const dest = audioCtx.createMediaStreamDestination();
             source.connect(dest);
-            call.peerConnection.ontrack = (event) => {
+            const onTrack = (event) => {
                 const remoteStream = event.streams[0];
                 const remoteSource = audioCtx.createMediaStreamSource(remoteStream);
                 const panner = audioCtx.createPanner();
@@ -567,6 +544,13 @@
                 this.voiceMeta.set(peerId, { audioCtx, panner, gain });
                 this.emit('voiceStream', peerId, remoteStream, { audioCtx, panner, gain });
             };
+            const pc = call.peerConnection;
+            if (pc && typeof pc.addEventListener === 'function') {
+                pc.addEventListener('track', onTrack);
+            } else if (pc) {
+                pc.ontrack = onTrack;
+            }
+            this.voiceAudio.set(peerId, { audioCtx, pc, onTrack });
         }
 
         _resolveCallId(id) {
@@ -604,7 +588,15 @@
                 this.ws = new WebSocket(String(serverUrl));
                 this.ws.onopen = async () => {
                     this.log('Signaling WebSocket open');
-                    const pubKey = await this._getOrCreatePublicKey();
+                    let pubKey;
+                    try {
+                        pubKey = await this._getOrCreatePublicKey();
+                    } catch (e) {
+                        this.log('E2EE key pair generation failed', e);
+                        this.emit('error', e);
+                        reject(e);
+                        return;
+                    }
                     const initPayload = this._buildInitPayload(auth, pubKey);
                     this._send({ opcode: 'INIT', payload: initPayload });
                     this.emit('signalingOpen');
@@ -754,13 +746,8 @@
             if (this.encryption.hasKeyPair()) {
                 return this.encryption.publicKey;
             }
-            try {
-                await this.encryption.generateKeyPair();
-                return this.encryption.publicKey;
-            } catch (e) {
-                this.log('E2EE key generation failed; using placeholder.', e);
-                return 'browser-sdk-placeholder';
-            }
+            await this.encryption.generateKeyPair();
+            return this.encryption.publicKey;
         }
 
         _buildInitPayload(auth, pubKey) {
@@ -902,9 +889,15 @@
                 this.peer = null;
             }
             this.connections.clear();
-            this.channels.clear();
+            this.globalChannels.clear();
             this.voiceCalls.forEach(call => { try { call.close(); } catch (e) { /* ignore */ } });
             this.voiceCalls.clear();
+            this.voiceAudio.forEach((audio) => {
+                try { audio.pc && audio.pc.removeEventListener && audio.pc.removeEventListener('track', audio.onTrack); } catch (e) { /* ignore */ }
+                try { audio.audioCtx && audio.audioCtx.close(); } catch (e) { /* ignore */ }
+            });
+            this.voiceAudio.clear();
+            this.voiceMeta.clear();
             this.localStreams.forEach(stream => stream.getTracks().forEach(t => t.stop()));
             this.localStreams.clear();
             this.ringing.clear();
@@ -940,7 +933,7 @@
             return this.lobbyList.slice();
         }
 
-        getLobbyInfo() {
+        getCachedLobbyInfo() {
             return Object.assign({}, this.lobbyInfo);
         }
 
@@ -1232,10 +1225,10 @@
             return proxy;
         }
 
-        makeGlobalNetworkedVar({ var, channel, id }, callback) {
+        makeGlobalNetworkedVar({ var: variable, channel, id }, callback) {
             const netId = this._createNetId(channel, id);
             const state = { value: null, listeners: new Set() };
-            const proxy = new Proxy(var, {
+            const proxy = new Proxy(variable, {
                 get(target, prop) {
                     if (prop === 'value') return state.value;
                     if (prop === 'set') return (value) => {
@@ -1255,10 +1248,10 @@
             return proxy;
         }
 
-        makePrivateNetworkedVar({ var, peer, channel, id }, callback) {
+        makePrivateNetworkedVar({ var: variable, peer, channel, id }, callback) {
             const netId = this._createNetId(channel, id);
             const state = { value: null, listeners: new Set() };
-            const proxy = new Proxy(var, {
+            const proxy = new Proxy(variable, {
                 get(target, prop) {
                     if (prop === 'value') return state.value;
                     if (prop === 'set') return (value) => {
@@ -1298,12 +1291,6 @@
             const proxy = this.netIdProxies.get(netId);
             const meta = this.netIdMeta.get(netId);
             if (!proxy || !meta || !meta.state) return;
-            const tracker = this.netUpdateTracker.get(netId) || { current: false, last: false };
-            this.netUpdateTracker.set(netId, { current: true, last: tracker.current });
-            if (tracker.current && tracker.last) {
-                this.netUpdateTracker.set(netId, { current: false, last: false });
-                return;
-            }
             if (meta.type === 'list') {
                 if (operation === 'reset') {
                     meta.state.length = 0;
@@ -1328,7 +1315,6 @@
                     meta.state.value = (meta.state.value || 0) + Number(data.steps);
                 }
             }
-            this.netUpdateTracker.set(netId, { current: false, last: tracker.current });
             meta.state.listeners.forEach((cb) => {
                 try { cb({ netId, operation, data, target: proxy }); } catch (e) { /* ignore */ }
             });
@@ -1357,10 +1343,9 @@
             if (!this.isPeerConnected(peerId)) return;
             const conn = this.connections.get(peerId);
             if (!conn || !conn.peerConnection) return;
-            const channels = conn.channels || new Map();
+            const channels = conn.channels || (conn.channels = new Map());
             if (channels.has(channel)) return;
-            const lockId = 'mikedevcl5_' + peerId + '_' + channel;
-            await navigator.locks.request(lockId, { ifAvailable: true }, () => {
+            const create = () => {
                 const id = conn.idCounter++;
                 const dataChannel = conn.peerConnection.createDataChannel(channel, { ordered, negotiated: true, id });
                 const record = { chan: dataChannel, data: '' };
@@ -1380,10 +1365,21 @@
                     }
                     this.emit('channelData', peerId, channel, record.data);
                 };
-                if (channels.get('default') && channels.get('default').chan && channels.get('default').chan.readyState === 'open') {
-                    channels.get('default').chan.send(JSON.stringify({ opcode: 'NEW_CHAN', payload: { id, label: channel, ordered } }));
+                try {
+                    if (conn.send) {
+                        conn.send(JSON.stringify({ opcode: 'NEW_CHAN', payload: { id, label: channel, ordered } }));
+                    }
+                } catch (e) {
+                    this.log('Failed to announce channel', peerId, channel, e);
                 }
-            });
+            };
+            const lockId = 'mikedevcl5_' + peerId + '_' + channel;
+            const locks = typeof navigator !== 'undefined' ? navigator.locks : null;
+            if (locks && typeof locks.request === 'function') {
+                await locks.request(lockId, { ifAvailable: true }, () => { create(); });
+            } else {
+                create();
+            }
         }
 
         closeChannel(peerId, channel) {
@@ -1424,9 +1420,8 @@
         }
 
         getGlobalChannelData(channel) {
-            const key = 'global:' + channel;
-            const store = this.channels.get(key);
-            return store ? store.data : '';
+            const name = String(channel);
+            return this.globalChannels.has(name) ? this.globalChannels.get(name) : '';
         }
 
         async requestMicrophonePermissions() {
@@ -1546,20 +1541,25 @@
             found.meta.gain.gain.value += Number(steps);
         }
 
+        _bindVoiceCall(peerId, call) {
+            this.voiceCalls.set(peerId, call);
+            call.on('close', () => this._cleanupVoice(peerId));
+            call.on('error', (err) => {
+                this.log('Voice call error', peerId, err);
+                this._cleanupVoice(peerId);
+            });
+            return call.open === false;
+        }
+
         async callPeer(peerId) {
             if (!this.connected) return;
             await this._ensureMic(peerId);
             const localStream = this.localStreams.get(peerId);
             const call = this.peer.call(peerId, localStream);
             if (!call) return;
-            this.voiceCalls.set(peerId, call);
+            if (this._bindVoiceCall(peerId, call)) return;
             await this._setupAudioFlow(peerId);
-            call.on('close', () => this._cleanupVoice(peerId));
-            call.on('error', (err) => {
-                this.log('Voice call error', peerId, err);
-                this._cleanupVoice(peerId);
-            });
-            await this._sendDirect(peerId, 'default', { opcode: 'CALL' });
+            await this._sendDirect(peerId, 'default', { opcode: 'CALL' }).catch(() => {});
         }
 
         async answerCall(peerId) {
@@ -1567,16 +1567,14 @@
             if (!call) return;
             await this._ensureMic(peerId);
             const localStream = this.localStreams.get(peerId);
-            call.answer(localStream);
             this.ringing.delete(peerId);
-            this.voiceCalls.set(peerId, call);
+            if (this._bindVoiceCall(peerId, call)) {
+                try { call.close(); } catch (e) { /* ignore */ }
+                return;
+            }
+            call.answer(localStream);
             await this._setupAudioFlow(peerId);
-            call.on('close', () => this._cleanupVoice(peerId));
-            call.on('error', (err) => {
-                this.log('Voice call error', peerId, err);
-                this._cleanupVoice(peerId);
-            });
-            await this._sendDirect(peerId, 'default', { opcode: 'ANSWER' });
+            await this._sendDirect(peerId, 'default', { opcode: 'ANSWER' }).catch(() => {});
         }
 
         declineCall(peerId) {

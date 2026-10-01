@@ -174,9 +174,9 @@ cl5.connect({
 | --- | --- |
 | `getLobbyHost()` | 当前房间主持人 |
 | `getLobbyList()` | 当前房间列表 |
-| `getLobbyInfo()` | 当前房间详情 |
+| `getCachedLobbyInfo()` | 同步读取本地缓存的当前房间详情 |
 | `refreshLobbies()` | 刷新房间列表 |
-| `getLobbyInfo(name)` | 查询指定房间详情 |
+| `getLobbyInfo(name)` | 异步查询指定房间详情（走 FIND_LOBBY 信令，需传房间名） |
 | `hostLobby(name, options)` | 创建房间 |
 | `joinLobby(name, password)` | 加入房间 |
 | `closeLobby()` | 关闭当前房间 |
@@ -247,6 +247,13 @@ cl5.connect({
 | `deriveSharedKey(publicKey, id)` | 和某个 peer 派生共享密钥 |
 | `encryptMessage(message, id)` | 加密消息 |
 | `decryptMessage(encryptedMessageBase64, ivBase64, id)` | 解密消息 |
+
+密钥存储说明：
+
+- `connect()` 时会自动生成密钥对（ECDH P-256），并把公钥（SPKI/base64）通过 INIT 信令发给信令服务器，服务端仅透传、不强依赖该字段。
+- 私钥和派生出的共享密钥都是 **不可导出的 `CryptoKey`**（`extractable: false`），只存在于当前页面内存中，关闭页面即丢失；SDK 不会把它们序列化成 base64，任何接口也拿不到私钥明文。
+- 因此 E2EE 状态不跨刷新保留：刷新页面 = 新密钥对，对端需要重新派生共享密钥。
+- 浏览器版不会自动用远端 peer 的公钥派生共享密钥；需要自行取得对方公钥后调用 `deriveSharedKey(remotePublicKey, id)`，后续 `encryptMessage` / `decryptMessage` 的 `id` 必须和它一致，否则会抛 "No shared key"。
 
 示例：
 
