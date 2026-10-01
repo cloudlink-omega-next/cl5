@@ -6,5 +6,8 @@ An implementation of the CloudLink 5 protocol for Scratch 3, which powers Cloudl
 ## 🧑‍💻 Where can I get the latest version?
 [Grab one of these and import it into your Scratch editor.](https://github.com/cloudlink-omega-next/cl5/tree/main/index.js)
 
+## 🧭 Browser SDK
+If you want to use CL5 directly in a normal HTML page, see [`docs/cl5-browser.md`](docs/cl5-browser.md) and [`example.html`](example.html).
+
 ## 📝🦆 Documentation
 See the Wiki for [In-Band](https://github.com/cloudlink-omega-next/cl5/wiki/In‐Band) and [Signaling](https://github.com/cloudlink-omega-next/cl5/wiki/Signaling) protocol documentation.

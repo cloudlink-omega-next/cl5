@@ -1821,6 +1821,29 @@
             localStream.getAudioTracks().forEach((track) => {track.enabled = STATE;});
         }
 
+        _resolve_call_id(ID) {
+            if (this.voice_connections.has(ID)) {
+                return ID;
+            }
+            if (this.ringing_peers.has(ID)) {
+                return ID;
+            }
+            if (this.peer_id_mapping) {
+                if (this.peer_id_mapping.has(ID)) {
+                    const actualID = this.peer_id_mapping.get(ID);
+                    if (this.voice_connections.has(actualID) || this.ringing_peers.has(actualID)) {
+                        return actualID;
+                    }
+                }
+                for (const [instanceId, actualPeer] of this.peer_id_mapping) {
+                    if (actualPeer === ID && (this.voice_connections.has(instanceId) || this.ringing_peers.has(instanceId))) {
+                        return instanceId;
+                    }
+                }
+            }
+            return ID;
+        }
+
         /**
          * Checks if a voice connection with the specified peer ID is connected.
          *
@@ -1828,26 +1851,8 @@
          * @returns {boolean} - True if the voice connection is connected, false otherwise or if the peer doesn't exist.
          */
         is_peer_voice_connected(ID) {
-            if (this.voice_connections.has(ID)) {
-                return true;
-            }
-            
-            if (this.peer_id_mapping) {
-                if (this.peer_id_mapping.has(ID)) {
-                    const actualID = this.peer_id_mapping.get(ID);
-                    if (this.voice_connections.has(actualID)) {
-                        return true;
-                    }
-                }
-                
-                for (const [instanceId, actualPeer] of this.peer_id_mapping) {
-                    if (actualPeer === ID && this.voice_connections.has(instanceId)) {
-                        return true;
-                    }
-                }
-            }
-            
-            return false;
+            const resolvedID = this._resolve_call_id(ID);
+            return this.voice_connections.has(resolvedID);
         }
 
         /**
@@ -1866,10 +1871,10 @@
         async call_peer(ID) {
             if (!this.is_connected()) return;
             if (!this.is_other_peer_connected(ID)) return;
-            if (this.voice_connections.has(ID)) return;
+            if (this.voice_connections.has(this._resolve_call_id(ID))) return;
 
             // Redirect the function call if the peer is already ringing
-            if (this.ringing_peers.has(ID)) {
+            if (this.ringing_peers.has(this._resolve_call_id(ID))) {
                 return await this.answer_call(ID);
             };
 
@@ -1903,14 +1908,15 @@
          * If a connection exists, it closes the call associated with that peer.
          */
         hangup_call(ID) {
-            if (this.voice_connections.has(ID)) {
-                this.voice_connections.get(ID).call.close();
-                this.voice_connections.delete(ID);
+            const resolvedID = this._resolve_call_id(ID);
+            if (this.voice_connections.has(resolvedID)) {
+                this.voice_connections.get(resolvedID).call.close();
+                this.voice_connections.delete(resolvedID);
             };
 
-            if (this.ringing_peers.has(ID)) {
-                this.ringing_peers.get(ID).close();
-                this.ringing_peers.delete(ID);
+            if (this.ringing_peers.has(resolvedID)) {
+                this.ringing_peers.get(resolvedID).close();
+                this.ringing_peers.delete(resolvedID);
             };
         }
 
@@ -1929,9 +1935,10 @@
         async answer_call(ID) {
             if (!this.peer) return;
             if (!this.is_other_peer_connected(ID)) return;
-            if (!this.ringing_peers.has(ID)) return;
+            const resolvedID = this._resolve_call_id(ID);
+            if (!this.ringing_peers.has(resolvedID)) return;
             
-            const call = this.ringing_peers.get(ID);
+            const call = this.ringing_peers.get(resolvedID);
             const lock_id = "mikedevcl5_" + ID + "_call";
             await navigator.locks.request(
                 lock_id,
@@ -1954,7 +1961,8 @@
         async decline_call(ID) {
             if (!this.peer) return;
             if (!this.is_other_peer_connected(ID)) return;
-            if (!this.ringing_peers.has(ID)) return;
+            const resolvedID = this._resolve_call_id(ID);
+            if (!this.ringing_peers.has(resolvedID)) return;
             
             if (this.verbose_logs) console.log("拒绝来自对等方的呼叫", ID);
             this.send_message_to_peer({opcode: "DECLINE"}, ID, "default");
@@ -1996,57 +2004,75 @@
         }
 
         build_audio_flow(id, stream, call) {
-            if (!this.audioContext) {
-                this.audioContext = vm.runtime.audioEngine.audioContext;
-                if (!this.audioContext) throw new Error("Audio context not found or not yet initialized!");
-            }
+            try {
+                if (!this.audioContext) {
+                    this.audioContext = (typeof vm !== 'undefined' && vm.runtime && vm.runtime.audioEngine) ? vm.runtime.audioEngine.audioContext : null;
+                    if (!this.audioContext) {
+                        console.warn("Audio context not found or not yet initialized!");
+                    }
+                }
 
-            if (this.ringing_peers.has(id)) this.ringing_peers.delete(id);
+                if (this.ringing_peers.has(id)) this.ringing_peers.delete(id);
 
-            // Initialize source
-            const source = this.audioContext.createMediaStreamSource(stream);
-            if (this.verbose_logs) console.log("初始化媒体流来源", source);
-            
-            // Initialize panner
-            const panner = this.audioContext.createPanner();
-            panner.panningModel = "HRTF";
-            panner.distanceModel = "inverse";
-            panner.refDistance = 1;
-            panner.maxDistance = 10000;
-            panner.rolloffFactor = 1;
-            panner.coneInnerAngle = 360;
-            panner.coneOuterAngle = 0;
-            panner.coneOuterGain = 0;
-            panner.positionX.value = 0;
-            panner.positionY.value = 0;
-            panner.positionZ.value = 0;
-            if (this.verbose_logs) console.log("初始化声像器", panner);
+                // Initialize source
+                const source = this.audioContext ? this.audioContext.createMediaStreamSource(stream) : null;
+                if (source && this.verbose_logs) console.log("初始化媒体流来源", source);
+                
+                // Initialize panner
+                const panner = this.audioContext ? this.audioContext.createPanner() : null;
+                if (panner) {
+                    panner.panningModel = "HRTF";
+                    panner.distanceModel = "inverse";
+                    panner.refDistance = 1;
+                    panner.maxDistance = 10000;
+                    panner.rolloffFactor = 1;
+                    panner.coneInnerAngle = 360;
+                    panner.coneOuterAngle = 0;
+                    panner.coneOuterGain = 0;
+                    panner.positionX.value = 0;
+                    panner.positionY.value = 0;
+                    panner.positionZ.value = 0;
+                    if (this.verbose_logs) console.log("初始化声像器", panner);
+                }
 
-            // Initialize gain
-            const gain = this.audioContext.createGain();
-            gain.gain.value = 1; 
-            if (this.verbose_logs) console.log("初始化增益", gain);
+                // Initialize gain
+                const gain = this.audioContext ? this.audioContext.createGain() : null;
+                if (gain) {
+                    gain.gain.value = 1; 
+                    if (this.verbose_logs) console.log("初始化增益", gain);
+                }
 
-            // Connect elements
-            source.connect(panner);
-            panner.connect(gain);
-            gain.connect(this.audioContext.destination);
+                // Connect elements
+                if (source && panner && gain) {
+                    source.connect(panner);
+                    panner.connect(gain);
+                    gain.connect(this.audioContext.destination);
+                }
 
-            // Store elements
-            this.voice_connections.set(id, {
-                call: call,
-                audio: stream,
-                gain,
-                panner
-            });
-            if (this.verbose_logs) console.log("为与对等方", id, "的通话存储了元素 - ", this.voice_connections.get(id));
+                // Store elements
+                this.voice_connections.set(id, {
+                    call: call,
+                    audio: stream,
+                    gain,
+                    panner
+                });
+                if (this.verbose_logs) console.log("为与对等方", id, "的通话存储了元素 - ", this.voice_connections.get(id));
 
-            // Log to console
-            if (this.verbose_logs) console.log("为与对等方", id, "的通话打开音频流");
+                // Log to console
+                if (this.verbose_logs) console.log("为与对等方", id, "的通话打开音频流");
 
-            if (this.audioContext.state === "suspended") {
-                if (this.verbose_logs) console.log("恢复音频上下文");
-                this.audioContext.resume();
+                if (this.audioContext && this.audioContext.state === "suspended") {
+                    if (this.verbose_logs) console.log("恢复音频上下文");
+                    this.audioContext.resume();
+                }
+            } catch (e) {
+                console.warn("构建音频流失败：", e);
+                this.voice_connections.set(id, {
+                    call: call,
+                    audio: stream,
+                    gain: null,
+                    panner: null
+                });
             }
         }
 
@@ -2058,20 +2084,23 @@
          * @returns {void}
          */
         set_call_x(id, x) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.panner.positionX.value = x;
         }
 
         get_call_x(id) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             return connection.panner.positionX.value;
         }
 
         change_call_x(id, steps) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.panner.positionX.value = connection.panner.positionX.value + steps;
         }
 
@@ -2083,20 +2112,23 @@
          * @returns {void}
          */
         set_call_y(id, y) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.panner.positionY.value = y;
         }
 
         get_call_y(id) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             return connection.panner.positionY.value;
         }
 
         change_call_y(id, steps) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.panner.positionY.value = connection.panner.positionY.value + steps;
         }
 
@@ -2108,20 +2140,23 @@
          * @returns {void}
          */
         set_call_z(id, z) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.panner.positionZ.value = z;
         }
 
         get_call_z(id) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             return connection.panner.positionZ.value;
         }
         
         change_call_z(id, steps) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.panner.positionZ.value = connection.panner.positionZ.value + steps;
         }
 
@@ -2133,20 +2168,23 @@
          * @returns {void}
          */
         set_call_volume(id, volume) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.gain.gain.value = (volume / 100).toFixed(2);
         }
 
         get_call_volume(id) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             return (connection.gain.gain.value * 100).toFixed(2);
         }
 
         change_call_volume(id, steps) {
-            if (!this.voice_connections.has(id)) return;
-            const connection = this.voice_connections.get(id);
+            const resolvedID = this._resolve_call_id(id);
+            if (!this.voice_connections.has(resolvedID)) return;
+            const connection = this.voice_connections.get(resolvedID);
             connection.gain.gain.value = connection.gain.gain.value + steps;
         }
 
@@ -2510,7 +2548,7 @@
                         opcode: "init_peer_mode",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "join lobby [LOBBY] with password [PASSWORD]"
+                            "加入大厅 [LOBBY] 使用密码 [PASSWORD]"
                         ),
                         arguments: {
                             LOBBY: {
@@ -2545,7 +2583,7 @@
                         opcode: "init_host_mode",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "host a lobby named [LOBBY] set the player limit to [PEERS] players, set password to [PASSWORD] lock access? [LOCK] enable server relay? [RELAY]"
+                            "创建名为 [LOBBY] 的大厅，玩家限制为 [PEERS] 人，密码为 [PASSWORD]，锁定访问？ [LOCK]，启用服务器中继？ [RELAY]"
                         ),
                         arguments: {
                             LOBBY: {
@@ -2574,7 +2612,7 @@
                         opcode: "set_lock_flag",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "set locked access to [LOCK]"
+                            "设置锁定访问为 [LOCK]"
                         ),
                         arguments: {
                             LOCK: {
@@ -2587,7 +2625,7 @@
                         opcode: "set_player_limit_value",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "set the player limit to [PEERS]"
+                            "将玩家限制设置为 [PEERS]"
                         ),
                         arguments: {
                             PEERS: {
@@ -2600,7 +2638,7 @@
                         opcode: "set_password_value",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "set the lobby password to [PASSWORD]"
+                            "将大厅密码设置为 [PASSWORD]"
                         ),
                         arguments: {
                             PASSWORD: {
@@ -2613,7 +2651,7 @@
                         opcode: "kick_peer_from_lobby",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "kick [PEER] from the lobby"
+                            "将 [PEER] 从大厅踢出"
                         ),
                         arguments: {
                             PEER: {
@@ -2626,7 +2664,7 @@
                         opcode: "transfer_ownership",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "transfer ownership of the lobby to [PEER]"
+                            "将大厅所有权转移给 [PEER]"
                         ),
                         arguments: {
                             PEER: {
@@ -2639,7 +2677,7 @@
                         opcode: "close_lobby",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "close lobby"
+                            "关闭大厅"
                         ),
                     },
                     "---",
@@ -2762,7 +2800,7 @@
                         opcode: "new_dchan",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "open a new channel named [CHANNEL] with player [PEER] and prefer [ORDERED]"
+                            "与玩家 [PEER] 创建名为 [CHANNEL] 的新通道，优先 [ORDERED]"
                         ),
                         arguments: {
                             CHANNEL: {
@@ -2802,7 +2840,7 @@
                         opcode: "close_dchan",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "close channel named [CHANNEL] with player [PEER]"
+                            "关闭与玩家 [PEER] 的名为 [CHANNEL] 的通道"
                         ),
                         arguments: {
                             CHANNEL: {
@@ -2820,7 +2858,7 @@
                         opcode: "on_broadcast_message",
                         blockType: Scratch.BlockType.HAT,
                         text: Scratch.translate(
-                            "when I get a broadcast in channel [CHANNEL]"
+                            "当我在通道 [CHANNEL] 中收到广播时"
                         ),
                         isEdgeActivated: false,
                         arguments: {
@@ -2845,7 +2883,7 @@
                         opcode: "broadcast",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "broadcast [DATA] to all players using channel [CHANNEL] and wait until done sending? [WAIT]"
+                            "向所有玩家广播 [DATA] 使用通道 [CHANNEL] 并等待发送完成？ [WAIT]"
                         ),
                         arguments: {
                             DATA: {
@@ -2867,7 +2905,7 @@
                         opcode: "on_private_message",
                         blockType: Scratch.BlockType.HAT,
                         text: Scratch.translate(
-                            "when I get a message from player [PEER] in channel [CHANNEL]"
+                            "当我在通道 [CHANNEL] 中收到来自玩家 [PEER] 的消息时"
                         ),
                         isEdgeActivated: false,
                         arguments: {
@@ -2885,7 +2923,7 @@
                         opcode: "get_private_channel_data",
                         blockType: Scratch.BlockType.REPORTER,
                         text: Scratch.translate(
-                            "message from player [PEER] in channel [CHANNEL]"
+                            "来自玩家 [PEER] 在通道 [CHANNEL] 中的消息"
                         ),
                         arguments: {
                             CHANNEL: {
@@ -2902,7 +2940,7 @@
                         opcode: "send",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "send message [DATA] to player [PEER] using channel [CHANNEL] and wait for message to finish sending? [WAIT]"
+                            "向玩家 [PEER] 发送消息 [DATA] 使用通道 [CHANNEL] 并等待消息发送完成？ [WAIT]"
                         ),
                         arguments: {
                             DATA: {
@@ -2955,7 +2993,7 @@
                         opcode: "make_private_networked_list",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "sync list [LIST] with player [PEER] using channel [CHANNEL] with [ID] as the network ID"
+                            "使用通道 [CHANNEL] 将列表 [LIST] 与玩家 [PEER] 同步，并将 [ID] 作为网络 ID"
                         ),
                         arguments: {
                             LIST: {
@@ -3003,7 +3041,7 @@
                         opcode: "make_private_networked_var",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "sync variable [VAR] with player [PEER] using channel [CHANNEL] with [ID] as the network ID"
+                            "使用通道 [CHANNEL] 将变量 [VAR] 与玩家 [PEER] 同步，并将 [ID] 作为网络 ID"
                         ),
                         arguments: {
                             VAR: {
@@ -3038,7 +3076,7 @@
                         opcode: "is_peer_vchan_open",
                         blockType: Scratch.BlockType.BOOLEAN,
                         text: Scratch.translate(
-                            "connected to voice chat with player [PEER]?"
+                            "已与玩家 [PEER] 建立语音通话？"
                         ),
                         arguments: {
                             PEER: {
@@ -3051,7 +3089,7 @@
                         opcode: "get_mic_mute_state",
                         blockType: Scratch.BlockType.BOOLEAN,
                         text: Scratch.translate(
-                            "is my microphone with player [PEER] muted?"
+                            "我与玩家 [PEER] 的麦克风是否静音？"
                         ),
                         arguments: {
                             PEER: {
@@ -3070,7 +3108,7 @@
                         opcode: "change_mic_state",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "[MICSTATE] my microphone with player [PEER]"
+                            "[MICSTATE] 我与玩家 [PEER] 的麦克风"
                         ),
                         arguments: {
                             PEER: {
@@ -3136,7 +3174,7 @@
                         opcode: "answer_vchan",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "answer call from [PEER]"
+                            "接听来自 [PEER] 的来电"
                         ),
                         arguments: {
                             PEER: {
@@ -3149,7 +3187,7 @@
                         opcode: "decline_vchan",
                         blockType: Scratch.BlockType.COMMAND,
                         text: Scratch.translate(
-                            "decline call from [PEER]"
+                            "拒绝来自 [PEER] 的来电"
                         ),
                         arguments: {
                             PEER: {

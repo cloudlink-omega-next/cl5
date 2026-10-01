@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CL5 Browser SDK 示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            background: #f6f8fa;
+            color: #222;
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        input, button {
+            margin: 4px;
+            padding: 8px;
+        }
+        pre {
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 12px;
+            border-radius: 6px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>CL5 Browser SDK 示例</h1>
+
+    <div class="card">
+        <h3>连接设置</h3>
+        <input id="serverUrl" placeholder="信令服务器地址" value="wss://0.peerjs.com/" />
+        <input id="username" placeholder="用户名" value="" />
+        <button id="connect">连接</button>
+        <button id="disconnect">断开</button>
+    </div>
+
+    <div class="card">
+        <h3>大厅</h3>
+        <input id="lobbyName" placeholder="大厅名称" value="DemoLobby" />
+        <input id="lobbyPassword" placeholder="密码" value="" />
+        <button id="join">加入大厅</button>
+        <button id="host">创建大厅</button>
+        <button id="refreshLobbies">刷新大厅列表</button>
+    </div>
+
+    <div class="card">
+        <h3>对等方</h3>
+        <input id="peerId" placeholder="对等方 ID" />
+        <button id="connectPeer">连接对等方</button>
+        <button id="disconnectPeer">断开对等方</button>
+        <button id="sendMessage">发送私信</button>
+        <button id="broadcast">广播</button>
+    </div>
+
+    <div class="card">
+        <h3>状态</h3>
+        <pre id="log"></pre>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="./cl5-browser.js"></script>
+    <script>
+        const logEl = document.getElementById('log');
+        const cl5 = new CL5();
+
+        function log(title, value) {
+            const now = new Date().toLocaleTimeString();
+            logEl.textContent += `[${now}] ${title}: ${JSON.stringify(value)}\n`;
+            logEl.scrollTop = logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        cl5.on('open', (data) => {
+            log('open', data);
+        });
+
+        cl5.on('signalingClose', () => {
+            log('signalingClose', null);
+        });
+
+        cl5.on('peerConnect', (peerId) => {
+            log('peerConnect', peerId);
+        });
+
+        cl5.on('peerDisconnect', (peerId) => {
+            log('peerDisconnect', peerId);
+        });
+
+        cl5.on('message', (peerId, channel, payload) => {
+            log('message', { peerId, channel, payload });
+        });
+
+        cl5.on('broadcast', (channel, payload) => {
+            log('broadcast', { channel, payload });
+        });
+
+        cl5.on('channelData', (peerId, channel, payload) => {
+            log('channelData', { peerId, channel, payload });
+        });
+
+        cl5.on('voiceCall', (peerId) => {
+            log('voiceCall', peerId);
+        });
+
+        document.getElementById('connect').addEventListener('click', async () => {
+            const serverUrl = document.getElementById('serverUrl').value.trim();
+            const username = document.getElementById('username').value.trim();
+            if (!serverUrl) return alert('请输入信令服务器地址');
+            try {
+                await cl5.connect({
+                    serverUrl,
+                    auth: username ? { mode: 'name', username } : { mode: 'token', token: 'demo' }
+                });
+                log('connect', 'ok');
+            } catch (e) {
+                log('connectError', e.message);
+            }
+        });
+
+        document.getElementById('disconnect').addEventListener('click', async () => {
+            try {
+                await cl5.disconnect();
+                log('disconnect', 'ok');
+            } catch (e) {
+                log('disconnectError', e.message);
+            }
+        });
+
+        document.getElementById('join').addEventListener('click', async () => {
+            const name = document.getElementById('lobbyName').value.trim();
+            const password = document.getElementById('lobbyPassword').value;
+            if (!name) return alert('请输入大厅名称');
+            try {
+                await cl5.joinLobby(name, password);
+                log('joinLobby', name);
+            } catch (e) {
+                log('joinLobbyError', e.message);
+            }
+        });
+
+        document.getElementById('host').addEventListener('click', async () => {
+            const name = document.getElementById('lobbyName').value.trim();
+            if (!name) return alert('请输入大厅名称');
+            try {
+                await cl5.hostLobby(name, { password: document.getElementById('lobbyPassword').value });
+                log('hostLobby', name);
+            } catch (e) {
+                log('hostLobbyError', e.message);
+            }
+        });
+
+        document.getElementById('refreshLobbies').addEventListener('click', async () => {
+            try {
+                await cl5.refreshLobbies();
+                log('lobbyList', cl5.getLobbyList());
+            } catch (e) {
+                log('refreshLobbiesError', e.message);
+            }
+        });
+
+        document.getElementById('connectPeer').addEventListener('click', async () => {
+            const peerId = document.getElementById('peerId').value.trim();
+            if (!peerId) return alert('请输入对等方 ID');
+            cl5._connectToPeer(peerId);
+            log('connectPeerRequested', peerId);
+        });
+
+        document.getElementById('disconnectPeer').addEventListener('click', () => {
+            const peerId = document.getElementById('peerId').value.trim();
+            if (!peerId) return;
+            cl5.disconnectPeer(peerId);
+            log('disconnectPeerRequested', peerId);
+        });
+
+        document.getElementById('sendMessage').addEventListener('click', async () => {
+            const peerId = document.getElementById('peerId').value.trim();
+            const payload = prompt('请输入要发送的消息', 'Hello');
+            if (!peerId || payload === null) return;
+            try {
+                await cl5.send(peerId, 'default', payload);
+                log('send', { peerId, payload });
+            } catch (e) {
+                log('sendError', e.message);
+            }
+        });
+
+        document.getElementById('broadcast').addEventListener('click', async () => {
+            const payload = prompt('请输入广播内容', 'Hello all');
+            if (payload === null) return;
+            try {
+                await cl5.broadcast('default', payload);
+                log('broadcastSent', payload);
+            } catch (e) {
+                log('broadcastError', e.message);
+            }
+        });
+    </script>
+</body>
+</html>
